@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, signInAnonymously, signInWithCustomToken } from 'firebase/auth';
-import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot, updateDoc, deleteDoc, addDoc } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, collection, onSnapshot, deleteDoc, addDoc } from 'firebase/firestore';
 import { 
   Users, 
   ShoppingCart, 
@@ -9,13 +9,8 @@ import {
   LayoutDashboard, 
   Plus, 
   Trash2, 
-  Save, 
   Calendar as CalendarIcon,
-  ChevronLeft,
-  ChevronRight,
   Wallet,
-  Sparkles,
-  MessageSquare,
   X,
   CreditCard,
   Banknote,
@@ -27,13 +22,20 @@ import {
   LogOut
 } from 'lucide-react';
 
-// --- Firebase & Gemini Configuration ---
-const firebaseConfig = JSON.parse(__firebase_config);
+// --- Firebase Configuration ---
+const firebaseConfig = {
+  apiKey: "AIzaSyDSlgcEMZfPuUeIviUyFy4HcIjSK6z5Q20",
+  authDomain: "shipon-meal.firebaseapp.com",
+  projectId: "shipon-meal",
+  storageBucket: "shipon-meal.firebasestorage.app",
+  messagingSenderId: "7235669895",
+  appId: "1:7235669895:web:bd952fc5189c18f0548d22"
+};
+
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'shopnodhara-meal-manager';
-const apiKey = ""; 
+const appId = 'shopnodhara-meal-manager';
 
 const App = () => {
   const [user, setUser] = useState(null);
@@ -51,11 +53,6 @@ const App = () => {
   const [pinError, setPinError] = useState(false);
   const CORRECT_PIN = "1234"; // Default Manager PIN
 
-  // AI States
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiResponse, setAiResponse] = useState(null);
-  const [showAiModal, setShowAiModal] = useState(false);
-
   const [newMemberName, setNewMemberName] = useState('');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
@@ -63,11 +60,7 @@ const App = () => {
   useEffect(() => {
     const initAuth = async () => {
       try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
+        await signInAnonymously(auth);
       } catch (err) {
         console.error("Auth error", err);
       }
@@ -162,52 +155,6 @@ const App = () => {
   };
 
   const getMemberName = (id) => members.find(m => m.id === id)?.name || "অজানা";
-
-  // Gemini API Integration
-  const callGemini = async (prompt, systemPrompt = "You are a helpful mess management assistant.") => {
-    setAiLoading(true);
-    setShowAiModal(true);
-    const fetchWithRetry = async (retries = 5, delay = 1000) => {
-      try {
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            systemInstruction: { parts: [{ text: systemPrompt }] }
-          })
-        });
-        if (!response.ok) throw new Error('API request failed');
-        const data = await response.json();
-        return data.candidates?.[0]?.content?.parts?.[0]?.text;
-      } catch (err) {
-        if (retries > 0) {
-          await new Promise(r => setTimeout(r, delay));
-          return fetchWithRetry(retries - 1, delay * 2);
-        }
-        throw err;
-      }
-    };
-
-    try {
-      const result = await fetchWithRetry();
-      setAiResponse(result);
-    } catch (err) {
-      setAiResponse("দুঃখিত, এই মুহূর্তে AI সার্ভারে সমস্যা হচ্ছে। পরে আবার চেষ্টা করুন।");
-    } finally {
-      setAiLoading(false);
-    }
-  };
-
-  const getBazarSuggestions = () => {
-    const prompt = `বর্তমান মিল রেট: ৳${mealRate}, মোট বাজার (নগদ+বাকি): ৳${totalBazar}, নগদ বাজার: ৳${cashBazar}, বাকি বাজার: ৳${creditBazar}, মোট মিল: ${totalMeals}। মেম্বার সংখ্যা: ${members.length}। আগামীকালের জন্য অল্প খরচে পুষ্টিকর খাবারের ৫টি বাজারের আইডিয়া দাও। উত্তর বাংলায় দাও।`;
-    callGemini(prompt, "তুমি একজন দক্ষ মেস ম্যানেজার।");
-  };
-
-  const getPaymentReminder = (memberName, balance) => {
-    const prompt = `${memberName} এর মেসে বর্তমানে ৳${Math.abs(balance)} টাকা বাকি আছে। তাকে একটি মজার কিন্তু সম্মানজনক তাগাদা মেসেজ লিখে দাও। মেসেজটি বাংলায় হবে।`;
-    callGemini(prompt, "তুমি একজন হাস্যরসাত্মক মেস ম্যানেজার।");
-  };
 
   // Actions (Guard with isManager)
   const addMember = async () => {
@@ -321,39 +268,7 @@ const App = () => {
         </div>
       )}
 
-      {/* AI Modal */}
-      {showAiModal && (
-        <div className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl">
-            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-5 flex justify-between items-center text-white">
-              <h3 className="font-bold flex items-center gap-2"><Sparkles size={20} /> AI এসিস্ট্যান্ট</h3>
-              <button onClick={() => setShowAiModal(false)} className="hover:bg-white/20 p-1 rounded-full"><X size={20} /></button>
-            </div>
-            <div className="p-6 max-h-[70vh] overflow-y-auto">
-              {aiLoading ? (
-                <div className="flex flex-col items-center gap-4 py-10">
-                  <div className="animate-bounce p-3 bg-blue-50 rounded-full">
-                    <Sparkles className="text-blue-600 animate-pulse" />
-                  </div>
-                  <p className="text-slate-500 font-medium animate-pulse">Gemini AI চিন্তা করছে...</p>
-                </div>
-              ) : (
-                <div className="prose prose-slate max-w-none whitespace-pre-line leading-relaxed text-slate-700">
-                  {aiResponse}
-                </div>
-              )}
-            </div>
-            <div className="p-4 border-t bg-slate-50 flex justify-end">
-              <button 
-                onClick={() => setShowAiModal(false)}
-                className="px-6 py-2 bg-slate-800 text-white rounded-xl font-bold text-sm shadow-md"
-              >ঠিক আছে</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Fixed Enhanced Manager Status Bar */}
+      {/* Enhanced Manager Status Bar */}
       <div className={`sticky top-0 w-full z-[60] shadow-sm transition-all duration-300 ${isManager ? 'bg-green-600 border-b border-green-700' : 'bg-white border-b border-slate-200'}`}>
         <div className="max-w-4xl mx-auto px-4 py-2.5 flex items-center justify-between">
           {isManager ? (
@@ -417,17 +332,9 @@ const App = () => {
       </nav>
 
       <main className="max-w-4xl mx-auto p-4 md:pb-24 pb-20">
-        <header className="mb-6 flex justify-between items-end">
-          <div>
-            <h1 className="text-2xl font-black text-slate-800 tracking-tight">স্বপ্নধারা মিল সিট</h1>
-            <p className="text-slate-500 text-sm">সহজ এবং বুদ্ধিমান মেস ম্যানেজমেন্ট</p>
-          </div>
-          <button 
-            onClick={getBazarSuggestions}
-            className="bg-indigo-600 text-white px-4 py-2.5 rounded-2xl font-bold text-xs flex items-center gap-2 hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 active:scale-95"
-          >
-            <Sparkles size={16} /> বাজারের আইডিয়া ✨
-          </button>
+        <header className="mb-6">
+          <h1 className="text-2xl font-black text-slate-800 tracking-tight">স্বপ্নধারা মিল সিট</h1>
+          <p className="text-slate-500 text-sm">সহজ মেস ম্যানেজমেন্ট সিস্টেম</p>
         </header>
 
         {/* Dashboard View */}
@@ -465,7 +372,6 @@ const App = () => {
                       <th className="p-4 font-bold">খরচ</th>
                       <th className="p-4 font-bold">জমা</th>
                       <th className="p-4 font-bold">ব্যালেন্স</th>
-                      <th className="p-4 font-bold">অ্যাকশন</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -480,16 +386,6 @@ const App = () => {
                           <td className="p-4 text-blue-600 font-bold">৳{stats.deposits}</td>
                           <td className={`p-4 font-black ${!isDue ? 'text-green-600' : 'text-red-500'}`}>
                             ৳{stats.balance}
-                          </td>
-                          <td className="p-4">
-                            {isDue && (
-                              <button 
-                                onClick={() => getPaymentReminder(member.name, stats.balance)}
-                                className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-all active:scale-90"
-                              >
-                                <MessageSquare size={16} />
-                              </button>
-                            )}
                           </td>
                         </tr>
                       );
@@ -536,19 +432,13 @@ const App = () => {
                 </div>
               ))}
             </div>
-            {!isManager && (
-              <div className="bg-orange-50 border border-orange-100 p-4 rounded-2xl flex items-start gap-3">
-                 <AlertCircle className="text-orange-500 mt-0.5" size={18}/>
-                 <p className="text-orange-700 text-sm leading-tight font-medium">মিল পরিবর্তন করতে ম্যানেজার হিসেবে লগইন করুন। সাধারণ ইউজাররা শুধুমাত্র মিল দেখতে পারবেন।</p>
-              </div>
-            )}
           </div>
         )}
 
         {/* Bazar & Deposit View */}
         {activeTab === 'bazar' && (
           <div className="space-y-6">
-            {isManager ? (
+            {isManager && (
               <>
                 <section className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
                   <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
@@ -614,23 +504,11 @@ const App = () => {
                   </form>
                 </section>
               </>
-            ) : (
-              <div className="bg-white p-10 rounded-3xl shadow-sm border border-slate-100 text-center space-y-4">
-                 <div className="mx-auto w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center text-slate-300">
-                   <Lock size={32} />
-                 </div>
-                 <h4 className="font-black text-slate-800 text-xl tracking-tight">অ্যাক্সেস সংরক্ষিত</h4>
-                 <p className="text-slate-500 text-sm max-w-[280px] mx-auto leading-relaxed">নতুন বাজার খরচ বা টাকা জমা যোগ করার জন্য ম্যানেজার পিন দিয়ে লগইন করুন। সাধারণ ইউজাররা শুধুমাত্র তালিকা দেখতে পারবেন।</p>
-                 <button 
-                  onClick={() => setShowManagerModal(true)}
-                  className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-sm shadow-lg shadow-blue-100 active:scale-95 transition-all"
-                 >ম্যানেজার লগইন</button>
-              </div>
             )}
 
             <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
                <div className="p-4 border-b border-slate-100 bg-slate-50/50">
-                  <h3 className="font-bold text-slate-700">বাজারের তালিকা (বিস্তারিত)</h3>
+                  <h3 className="font-bold text-slate-700">বাজারের তালিকা</h3>
                </div>
                <div className="divide-y divide-slate-50">
                   {bazarList.slice().sort((a,b) => new Date(b.date) - new Date(a.date)).map(item => (
@@ -690,7 +568,7 @@ const App = () => {
                     </div>
                     <div>
                       <span className="font-bold text-slate-800 text-lg block">{member.name}</span>
-                      <span className="text-xs text-slate-400">সক্রিয় মেম্বার</span>
+                      <span className="text-xs text-slate-400">সক্রিয় মেম্বার</span>
                     </div>
                   </div>
                   {isManager && (
@@ -704,9 +582,6 @@ const App = () => {
                 </div>
               ))}
             </div>
-            {!isManager && (
-              <p className="text-center text-slate-400 text-sm italic py-4">মেম্বার যোগ বা ডিলিট করার জন্য ম্যানেজার পিন প্রয়োজন।</p>
-            )}
           </div>
         )}
       </main>
