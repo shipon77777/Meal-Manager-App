@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, onAuthStateChanged, signInAnonymously, signInWithCustomToken } from 'firebase/auth';
+import { getAuth, onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import { getFirestore, doc, setDoc, collection, onSnapshot, deleteDoc, addDoc } from 'firebase/firestore';
 import { 
   Users, 
@@ -11,7 +11,6 @@ import {
   Trash2, 
   Calendar as CalendarIcon,
   Wallet,
-  X,
   CreditCard,
   Banknote,
   User,
@@ -19,10 +18,12 @@ import {
   Unlock,
   ShieldCheck,
   AlertCircle,
-  LogOut
+  LogOut,
+  MessageSquare
 } from 'lucide-react';
 
 // --- Firebase Configuration ---
+// আপনার আসল এপিআই কী এখানে দেওয়া আছে
 const firebaseConfig = {
   apiKey: "AIzaSyDSlgcEMZfPuUeIviUyFy4HcIjSK6z5Q20",
   authDomain: "shipon-meal.firebaseapp.com",
@@ -51,7 +52,7 @@ const App = () => {
   const [showManagerModal, setShowManagerModal] = useState(false);
   const [managerPin, setManagerPin] = useState('');
   const [pinError, setPinError] = useState(false);
-  const CORRECT_PIN = "1234"; // Default Manager PIN
+  const CORRECT_PIN = "1234"; 
 
   const [newMemberName, setNewMemberName] = useState('');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -76,10 +77,17 @@ const App = () => {
   useEffect(() => {
     if (!user) return;
 
+    // ডাটাবেস ফাঁকা থাকলেও যাতে ৫ সেকেন্ড পর লোডিং বন্ধ হয় তার জন্য টাইমার
+    const timer = setTimeout(() => setLoading(false), 5000);
+
     const membersRef = collection(db, 'artifacts', appId, 'public', 'data', 'members');
     const unsubMembers = onSnapshot(membersRef, (snapshot) => {
       setMembers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (err) => console.error("Members sync error", err));
+      setLoading(false); // মেম্বার ডাটা আসলে লোডিং বন্ধ হবে
+    }, (err) => {
+      console.error("Members sync error", err);
+      setLoading(false);
+    });
 
     const bazarRef = collection(db, 'artifacts', appId, 'public', 'data', 'bazar');
     const unsubBazar = onSnapshot(bazarRef, (snapshot) => {
@@ -98,7 +106,7 @@ const App = () => {
     const depositsRef = collection(db, 'artifacts', appId, 'public', 'data', 'deposits');
     const unsubDeposits = onSnapshot(depositsRef, (snapshot) => {
       setDeposits(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      setLoading(false);
+      clearTimeout(timer);
     }, (err) => console.error("Deposits sync error", err));
 
     return () => {
@@ -106,6 +114,7 @@ const App = () => {
       unsubBazar();
       unsubMeals();
       unsubDeposits();
+      clearTimeout(timer);
     };
   }, [user]);
 
@@ -156,7 +165,7 @@ const App = () => {
 
   const getMemberName = (id) => members.find(m => m.id === id)?.name || "অজানা";
 
-  // Actions (Guard with isManager)
+  // Actions
   const addMember = async () => {
     if (!isManager || !newMemberName.trim()) return;
     await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'members'), {
@@ -220,8 +229,9 @@ const App = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-slate-50">
+      <div className="flex flex-col items-center justify-center h-screen bg-slate-50 gap-4">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <p className="text-slate-500 font-medium animate-pulse">ডাটাবেসের সাথে কানেক্ট হচ্ছে...</p>
       </div>
     );
   }
@@ -359,41 +369,51 @@ const App = () => {
               </div>
             </div>
 
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-              <div className="p-4 border-b border-slate-100 bg-slate-50/50">
-                <h3 className="font-bold text-slate-700">মেম্বার সামারি</h3>
+            {members.length === 0 ? (
+              <div className="bg-blue-50 border border-blue-100 p-8 rounded-3xl text-center space-y-4">
+                <div className="mx-auto w-12 h-12 bg-white rounded-full flex items-center justify-center text-blue-600 shadow-sm">
+                  <Users size={24}/>
+                </div>
+                <h3 className="font-bold text-slate-800">কোন মেম্বার পাওয়া যায়নি</h3>
+                <p className="text-slate-600 text-sm max-w-xs mx-auto">সিস্টেম শুরু করতে প্রথমে 'ম্যানেজার লগইন' করুন এবং 'মেম্বার' ট্যাবে গিয়ে অন্তত একজন মেম্বার যোগ করুন।</p>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-100 text-[11px] uppercase text-slate-500">
-                      <th className="p-4 font-bold">নাম</th>
-                      <th className="p-4 font-bold">মিল</th>
-                      <th className="p-4 font-bold">খরচ</th>
-                      <th className="p-4 font-bold">জমা</th>
-                      <th className="p-4 font-bold">ব্যালেন্স</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {members.map(member => {
-                      const stats = getMemberStats(member.id);
-                      const isDue = Number(stats.balance) < 0;
-                      return (
-                        <tr key={member.id} className="hover:bg-slate-50 transition-colors">
-                          <td className="p-4 font-medium">{member.name}</td>
-                          <td className="p-4 font-bold">{stats.meals}</td>
-                          <td className="p-4">৳{stats.cost}</td>
-                          <td className="p-4 text-blue-600 font-bold">৳{stats.deposits}</td>
-                          <td className={`p-4 font-black ${!isDue ? 'text-green-600' : 'text-red-500'}`}>
-                            ৳{stats.balance}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+            ) : (
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                <div className="p-4 border-b border-slate-100 bg-slate-50/50">
+                  <h3 className="font-bold text-slate-700">মেম্বার সামারি</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-100 text-[11px] uppercase text-slate-500">
+                        <th className="p-4 font-bold">নাম</th>
+                        <th className="p-4 font-bold">মিল</th>
+                        <th className="p-4 font-bold">খরচ</th>
+                        <th className="p-4 font-bold">জমা</th>
+                        <th className="p-4 font-bold">ব্যালেন্স</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {members.map(member => {
+                        const stats = getMemberStats(member.id);
+                        const isDue = Number(stats.balance) < 0;
+                        return (
+                          <tr key={member.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="p-4 font-medium">{member.name}</td>
+                            <td className="p-4 font-bold">{stats.meals}</td>
+                            <td className="p-4">৳{stats.cost}</td>
+                            <td className="p-4 text-blue-600 font-bold">৳{stats.deposits}</td>
+                            <td className={`p-4 font-black ${!isDue ? 'text-green-600' : 'text-red-500'}`}>
+                              ৳{stats.balance}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 
@@ -411,26 +431,30 @@ const App = () => {
             </div>
 
             <div className="grid gap-3">
-              {members.map(member => (
-                <div key={member.id} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between">
-                  <span className="font-bold text-slate-700">{member.name}</span>
-                  <div className="flex items-center gap-3">
-                    <button 
-                      onClick={() => updateMeal(member.id, Math.max(0, (meals[selectedDate]?.[member.id] || 0) - 0.5))}
-                      disabled={!isManager}
-                      className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xl transition-all ${isManager ? 'bg-slate-100 active:scale-90' : 'bg-slate-50 text-slate-300 cursor-not-allowed'}`}
-                    >-</button>
-                    <span className="w-12 text-center font-black text-blue-600 text-xl">
-                      {meals[selectedDate]?.[member.id] || 0}
-                    </span>
-                    <button 
-                      onClick={() => updateMeal(member.id, (meals[selectedDate]?.[member.id] || 0) + 0.5)}
-                      disabled={!isManager}
-                      className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xl transition-all ${isManager ? 'bg-blue-600 text-white active:scale-90 shadow-md shadow-blue-100' : 'bg-blue-100 text-blue-200 cursor-not-allowed'}`}
-                    >+</button>
+              {members.length === 0 ? (
+                <p className="text-center text-slate-400 py-10 italic">মেম্বার যোগ করার পর এখানে মিল এন্ট্রি করতে পারবেন।</p>
+              ) : (
+                members.map(member => (
+                  <div key={member.id} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between">
+                    <span className="font-bold text-slate-700">{member.name}</span>
+                    <div className="flex items-center gap-3">
+                      <button 
+                        onClick={() => updateMeal(member.id, Math.max(0, (meals[selectedDate]?.[member.id] || 0) - 0.5))}
+                        disabled={!isManager}
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xl transition-all ${isManager ? 'bg-slate-100 active:scale-90' : 'bg-slate-50 text-slate-300 cursor-not-allowed'}`}
+                      >-</button>
+                      <span className="w-12 text-center font-black text-blue-600 text-xl">
+                        {meals[selectedDate]?.[member.id] || 0}
+                      </span>
+                      <button 
+                        onClick={() => updateMeal(member.id, (meals[selectedDate]?.[member.id] || 0) + 0.5)}
+                        disabled={!isManager}
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xl transition-all ${isManager ? 'bg-blue-600 text-white active:scale-90 shadow-md shadow-blue-100' : 'bg-blue-100 text-blue-200 cursor-not-allowed'}`}
+                      >+</button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         )}
@@ -438,7 +462,7 @@ const App = () => {
         {/* Bazar & Deposit View */}
         {activeTab === 'bazar' && (
           <div className="space-y-6">
-            {isManager && (
+            {isManager ? (
               <>
                 <section className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
                   <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
@@ -504,6 +528,18 @@ const App = () => {
                   </form>
                 </section>
               </>
+            ) : (
+              <div className="bg-white p-10 rounded-3xl shadow-sm border border-slate-100 text-center space-y-4">
+                  <div className="mx-auto w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center text-slate-300">
+                    <Lock size={32} />
+                  </div>
+                  <h4 className="font-black text-slate-800 text-xl tracking-tight">অ্যাক্সেস সংরক্ষিত</h4>
+                  <p className="text-slate-500 text-sm max-w-[280px] mx-auto leading-relaxed">নতুন বাজার খরচ বা টাকা জমা যোগ করার জন্য ম্যানেজার পিন দিয়ে লগইন করুন।</p>
+                  <button 
+                  onClick={() => setShowManagerModal(true)}
+                  className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-sm shadow-lg shadow-blue-100 active:scale-95 transition-all"
+                  >ম্যানেজার লগইন</button>
+              </div>
             )}
 
             <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
@@ -511,28 +547,32 @@ const App = () => {
                   <h3 className="font-bold text-slate-700">বাজারের তালিকা</h3>
                </div>
                <div className="divide-y divide-slate-50">
-                  {bazarList.slice().sort((a,b) => new Date(b.date) - new Date(a.date)).map(item => (
-                    <div key={item.id} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                           <p className="font-bold text-slate-800">{item.item}</p>
-                           <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${item.type === 'credit' ? 'bg-red-50 text-red-500' : 'bg-blue-50 text-blue-500'}`}>
-                             {item.type === 'credit' ? 'বাকি' : 'নগদ'}
-                           </span>
+                  {bazarList.length === 0 ? (
+                    <p className="p-10 text-center text-slate-400 italic">কোন বাজারের তথ্য নেই।</p>
+                  ) : (
+                    bazarList.slice().sort((a,b) => new Date(b.date) - new Date(a.date)).map(item => (
+                      <div key={item.id} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                             <p className="font-bold text-slate-800">{item.item}</p>
+                             <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${item.type === 'credit' ? 'bg-red-50 text-red-500' : 'bg-blue-50 text-blue-500'}`}>
+                               {item.type === 'credit' ? 'বাকি' : 'নগদ'}
+                             </span>
+                          </div>
+                          <div className="flex items-center gap-3 text-[11px] text-slate-400">
+                            <span className="flex items-center gap-1"><CalendarIcon size={12}/> {item.date}</span>
+                            <span className="flex items-center gap-1"><User size={12}/> {getMemberName(item.memberId)}</span>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-3 text-[11px] text-slate-400">
-                          <span className="flex items-center gap-1"><CalendarIcon size={12}/> {item.date}</span>
-                          <span className="flex items-center gap-1"><User size={12}/> {getMemberName(item.memberId)}</span>
+                        <div className="flex items-center gap-4">
+                          <span className="font-black text-slate-700 text-lg">৳{item.amount}</span>
+                          {isManager && (
+                            <button onClick={() => { if(window.confirm('মুছে ফেলতে চান?')) deleteBazarItem(item.id); }} className="text-slate-200 hover:text-red-500 p-2"><Trash2 size={16}/></button>
+                          )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-4">
-                        <span className="font-black text-slate-700 text-lg">৳{item.amount}</span>
-                        {isManager && (
-                          <button onClick={() => { if(window.confirm('মুছে ফেলতে চান?')) deleteBazarItem(item.id); }} className="text-slate-200 hover:text-red-500 p-2"><Trash2 size={16}/></button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    ))
+                  )}
                </div>
             </div>
           </div>
@@ -549,38 +589,44 @@ const App = () => {
                     value={newMemberName}
                     onChange={(e) => setNewMemberName(e.target.value)}
                     placeholder="মেম্বারের নাম" 
-                    className="flex-1 p-3 rounded-xl border border-slate-200 outline-none" 
+                    className="flex-1 p-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-100" 
                   />
                   <button 
                     onClick={addMember}
-                    className="bg-slate-800 text-white px-8 rounded-xl font-bold hover:bg-slate-900 transition-all shadow-lg"
+                    className="bg-slate-800 text-white px-8 rounded-xl font-bold hover:bg-slate-900 transition-all shadow-lg active:scale-95"
                   >যোগ দিন</button>
                 </div>
               </div>
             )}
 
             <div className="grid gap-3">
-              {members.map(member => (
-                <div key={member.id} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-black">
-                      {member.name.charAt(0).toUpperCase()}
-                    </div>
-                    <div>
-                      <span className="font-bold text-slate-800 text-lg block">{member.name}</span>
-                      <span className="text-xs text-slate-400">সক্রিয় মেম্বার</span>
-                    </div>
-                  </div>
-                  {isManager && (
-                    <button 
-                      onClick={() => { if(window.confirm(`${member.name} কে রিমুভ করতে চান?`)) deleteMember(member.id); }}
-                      className="p-3 text-slate-200 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
-                    >
-                      <Trash2 size={20} />
-                    </button>
-                  )}
+              {members.length === 0 ? (
+                <div className="bg-white p-10 rounded-2xl border border-dashed border-slate-200 text-center">
+                  <p className="text-slate-400 italic">কোন মেম্বার নেই। ম্যানেজার মোড থেকে মেম্বার যোগ করুন।</p>
                 </div>
-              ))}
+              ) : (
+                members.map(member => (
+                  <div key={member.id} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between animate-in slide-in-from-bottom-2">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-black shadow-md shadow-blue-100">
+                        {member.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <span className="font-bold text-slate-800 text-lg block">{member.name}</span>
+                        <span className="text-xs text-slate-400">সক্রিয় মেম্বার</span>
+                      </div>
+                    </div>
+                    {isManager && (
+                      <button 
+                        onClick={() => { if(window.confirm(`${member.name} কে রিমুভ করতে চান?`)) deleteMember(member.id); }}
+                        className="p-3 text-slate-200 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                      >
+                        <Trash2 size={20} />
+                      </button>
+                    )}
+                  </div>
+                ))
+              )}
             </div>
           </div>
         )}
